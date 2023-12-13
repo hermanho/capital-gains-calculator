@@ -741,6 +741,16 @@ class CapitalGainsCalculator:
         calculation_log: CalculationLog = defaultdict(dict)
         self.portfolio.clear()
 
+        disposal_list_symbol = [
+            s
+            for s in [
+                self.disposal_list[disposal].keys()
+                for disposal in self.disposal_list
+                if disposal >= tax_year_start_index and disposal <= end_index
+            ]
+            for s in s
+        ]
+        print(disposal_list_symbol)
         for date_index in (
             begin_index + datetime.timedelta(days=x)
             for x in range((end_index - begin_index).days + 1)
@@ -815,6 +825,18 @@ class CapitalGainsCalculator:
                             ] = [spin_off_entry]
         print("\nSecond pass completed")
         allowance = CAPITAL_GAIN_ALLOWANCES.get(self.tax_year)
+
+        for date_index in calculation_log:
+            calculation_log[date_index] = {
+                symbol: calculation_log[date_index][symbol]
+                for symbol in calculation_log[date_index]
+                if symbol[5:] in disposal_list_symbol
+            }
+        calculation_log = {
+            date_index: calculation_log[date_index]
+            for date_index in calculation_log
+            if len(calculation_log[date_index]) > 0
+        }
 
         return CapitalGainsReport(
             self.tax_year,
