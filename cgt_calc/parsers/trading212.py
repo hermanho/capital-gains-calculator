@@ -10,7 +10,7 @@ from typing import Final
 
 from cgt_calc.const import TICKER_RENAMES
 from cgt_calc.exceptions import ParsingError
-from cgt_calc.model import ActionType, BrokerTransaction
+from cgt_calc.model import ActionType, BrokerTransaction, ProductType
 
 COLUMNS: Final[list[str]] = [
     "Action",
@@ -174,6 +174,7 @@ class Trading212Transaction(BrokerTransaction):
             amount,
             currency,
             broker,
+            ProductType.EQUITY,
         )
 
     def __hash__(self) -> int:

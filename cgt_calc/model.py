@@ -65,6 +65,22 @@ class ActionType(Enum):
     WIRE_FUNDS_RECEIVED = 14
     STOCK_SPLIT = 15
     CASH_MERGER = 16
+    FULL_REDEMPTION = 17
+    FULL_REDEMPTION_ADJ = 18
+
+
+class ProductType(str, Enum):
+    """Type of transaction action."""
+
+    EQUITY = "EQUITY"
+    US_T_BILL = "US_T_BILL"
+
+
+class CalcuationType(Enum):
+    """Calculation type enumeration."""
+
+    ACQUISITION = 1
+    DISPOSAL = 2
 
 
 @dataclass
@@ -81,6 +97,7 @@ class BrokerTransaction:
     amount: Decimal | None
     currency: str
     broker: str
+    product_type: ProductType
 
 
 class RuleType(Enum):
@@ -220,6 +237,7 @@ class CapitalGainsReport:
     capital_gain_allowance: Decimal | None
     calculation_log: CalculationLog
     show_unrealized_gains: bool
+    products_type: dict[str, ProductType]
 
     def total_unrealized_gains(self) -> Decimal:
         """Total unrealized gains across portfolio."""

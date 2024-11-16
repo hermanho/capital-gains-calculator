@@ -11,7 +11,7 @@ from typing import Final
 
 from cgt_calc.const import TICKER_RENAMES
 from cgt_calc.exceptions import InvalidTransactionError, ParsingError
-from cgt_calc.model import ActionType, BrokerTransaction
+from cgt_calc.model import ActionType, BrokerTransaction, ProductType
 
 STOCK_ACTIVITY_COMMENT_MARKER: Final[str] = "Stock Activity"
 
@@ -109,6 +109,7 @@ def parse_dividend_payments(
             quantity=None,
             price=None,
             fees=Decimal(0),
+            product_type=ProductType.EQUITY,
         )
 
         # Generate the tax as a separate transaction
@@ -124,6 +125,7 @@ def parse_dividend_payments(
                 quantity=None,
                 price=None,
                 fees=Decimal(0),
+                product_type=ProductType.EQUITY,
             )
 
 
@@ -230,6 +232,7 @@ def parse_trades(
             amount=amount,
             currency=currency,
             broker=broker,
+            product_type=ProductType.EQUITY,
         )
 
         # Sharesight has no native support for stock activity, so use a string

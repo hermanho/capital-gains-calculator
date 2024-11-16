@@ -7,7 +7,13 @@ from decimal import Decimal
 
 import pytest
 
-from cgt_calc.model import ActionType, BrokerTransaction, CalculationEntry, RuleType
+from cgt_calc.model import (
+    ActionType,
+    BrokerTransaction,
+    CalculationEntry,
+    ProductType,
+    RuleType,
+)
 from cgt_calc.util import round_decimal
 
 
@@ -86,6 +92,7 @@ def transaction(
         amount=round_decimal(Decimal(amount), 6) if amount else None,
         currency="USD",
         broker="Testing",
+        product_type=ProductType.EQUITY,
     )
 
 

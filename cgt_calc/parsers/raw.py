@@ -10,7 +10,7 @@ from typing import Final
 
 from cgt_calc.const import TICKER_RENAMES
 from cgt_calc.exceptions import ParsingError, UnexpectedColumnCountError
-from cgt_calc.model import ActionType, BrokerTransaction
+from cgt_calc.model import ActionType, BrokerTransaction, ProductType
 
 CSV_COLUMNS_NUM: Final = 7
 
@@ -79,6 +79,7 @@ class RawTransaction(BrokerTransaction):
             amount,
             currency,
             broker,
+            ProductType.EQUITY,
         )
 
 

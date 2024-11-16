@@ -18,7 +18,7 @@ from cgt_calc.exceptions import (
     UnexpectedColumnCountError,
     UnexpectedRowCountError,
 )
-from cgt_calc.model import ActionType, BrokerTransaction
+from cgt_calc.model import ActionType, BrokerTransaction, ProductType
 
 OLD_COLUMNS_NUM: Final = 9
 NEW_COLUMNS_NUM: Final = 8
@@ -136,6 +136,12 @@ def action_from_str(label: str) -> ActionType:
     if label in ["Cash Merger", "Cash Merger Adj"]:
         return ActionType.CASH_MERGER
 
+    if label == "Full Redemption":
+        return ActionType.FULL_REDEMPTION
+
+    if label == "Full Redemption Adj":
+        return ActionType.FULL_REDEMPTION_ADJ
+
     raise ParsingError("schwab transactions", f"Unknown action: {label}")
 
 
@@ -202,6 +208,12 @@ class SchwabTransaction(BrokerTransaction):
             else None
         )
 
+        productType = ProductType.EQUITY
+        if "US TREASURY BIL" in description:
+            productType = ProductType.US_T_BILL
+            symbol = "US Treasury Bill " + (symbol if symbol is not None else "")
+            quantity = quantity / 100 if quantity is not None else None
+
         currency = "USD"
         broker = "Charles Schwab"
         super().__init__(
@@ -215,6 +227,7 @@ class SchwabTransaction(BrokerTransaction):
             amount,
             currency,
             broker,
+            productType,
         )
 
     @staticmethod

@@ -23,7 +23,7 @@ from typing import Any, Final
 
 from cgt_calc.const import TICKER_RENAMES
 from cgt_calc.exceptions import ParsingError
-from cgt_calc.model import ActionType, BrokerTransaction
+from cgt_calc.model import ActionType, BrokerTransaction, ProductType
 from cgt_calc.util import round_decimal
 
 OPTIONAL_DETAILS_NAME: Final = "Details"
@@ -299,6 +299,7 @@ class SchwabTransaction(BrokerTransaction):
             amount,
             currency,
             broker,
+            ProductType.EQUITY,
         )
 
         self._normalize_split()

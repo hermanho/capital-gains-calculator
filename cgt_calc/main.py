@@ -31,6 +31,7 @@ from .initial_prices import InitialPrices
 from .model import (
     ActionType,
     BrokerTransaction,
+    CalcuationType,
     CalculationEntry,
     CalculationLog,
     CapitalGainsReport,
@@ -38,6 +39,7 @@ from .model import (
     HmrcTransactionLog,
     PortfolioEntry,
     Position,
+    ProductType,
     RuleType,
     SpinOff,
 )
@@ -57,9 +59,44 @@ def get_amount_or_fail(transaction: BrokerTransaction) -> Decimal:
     return amount
 
 
+# Amount difference is caused by rounding errors in the price.
+# Schwab rounds down the price to 4 decimal places
+#  so that the error in amount can be more than $0.01.
+# Fox example:
+# 500 shares of FOO sold at $100.00016 with $1.23 fees.
+# "01/01/2024,"Sell","FOO","FOO","500","$100.0001","$1.23","$49,998.85"
+# calculated_amount = 500 * 100.0001 - 1.23 = 49998.82
+# amount_on_record = 49998.85 vs calculated_amount = 49998.82
+def _approx_equal_price_rounding(
+    amount_on_record: Decimal,
+    quantity_on_record: Decimal,
+    price_on_record: Decimal,
+    fees_on_record: Decimal,
+    calcuationType: CalcuationType,
+) -> bool:
+    calculated_amount = Decimal(0)
+    calculated_price = Decimal(0)
+    if calcuationType is CalcuationType.ACQUISITION:
+        calculated_amount = Decimal(-1) * (
+            quantity_on_record * price_on_record + fees_on_record
+        )
+        calculated_price = (
+            Decimal(-1) * amount_on_record - fees_on_record
+        ) / quantity_on_record
+    elif calcuationType is CalcuationType.DISPOSAL:
+        calculated_amount = quantity_on_record * price_on_record - fees_on_record
+        calculated_price = (amount_on_record + fees_on_record) / quantity_on_record
+    if abs(calculated_price - price_on_record) < Decimal("0.0001"):
+        return True
+    return _approx_equal(amount_on_record, calculated_amount)
+
+
 # It is not clear how Schwab or other brokers round the dollar value,
 # so assume the values are equal if they are within $0.01.
-def _approx_equal(val_a: Decimal, val_b: Decimal) -> bool:
+def _approx_equal(
+    val_a: Decimal,
+    val_b: Decimal,
+) -> bool:
     return abs(val_a - val_b) < Decimal("0.01")
 
 
@@ -95,6 +132,7 @@ class CapitalGainsCalculator:
 
         self.portfolio: dict[str, Position] = defaultdict(Position)
         self.spin_offs: dict[datetime.date, list[SpinOff]] = defaultdict(list)
+        self.products_type: dict[str, ProductType] = defaultdict(ProductType)
 
     def date_in_tax_year(self, date: datetime.date) -> bool:
         """Check if date is within current tax year."""
@@ -130,12 +168,22 @@ class CapitalGainsCalculator:
                 raise PriceMissingError(transaction)
 
             amount = get_amount_or_fail(transaction)
-            calculated_amount = quantity * price + transaction.fees
-            if not _approx_equal(amount, -calculated_amount):
-                raise CalculatedAmountDiscrepancyError(transaction, -calculated_amount)
+            if transaction.product_type is not ProductType.US_T_BILL:
+                calculated_amount = quantity * price + transaction.fees
+                if not _approx_equal_price_rounding(
+                    amount,
+                    quantity,
+                    price,
+                    transaction.fees,
+                    CalcuationType.ACQUISITION,
+                ):
+                    raise CalculatedAmountDiscrepancyError(
+                        transaction, -calculated_amount
+                    )
             amount = -amount
 
         self.portfolio[symbol] += Position(quantity, amount)
+        self.products_type[symbol] = transaction.product_type
 
         add_to_list(
             self.acquisition_list,
@@ -239,8 +287,19 @@ class CapitalGainsCalculator:
         """Add new disposal to the given list."""
         symbol = transaction.symbol
         quantity = transaction.quantity
+        action = transaction.action
+        productType = transaction.product_type
         if symbol is None:
             raise SymbolMissingError(transaction)
+        # US T-Bill transaction
+        # US T-Bill mature FULL_REDEMPTION transaction has -negative quantity
+        if (
+            productType is ProductType.US_T_BILL
+            and action is ActionType.FULL_REDEMPTION_ADJ
+            and quantity is not None
+            and quantity < 0
+        ):
+            quantity = -1 * quantity
         if symbol not in self.portfolio:
             raise InvalidTransactionError(
                 transaction, "Tried to sell not owned symbol, reversed order?"
@@ -258,6 +317,7 @@ class CapitalGainsCalculator:
         price = transaction.price
 
         self.portfolio[symbol] -= Position(quantity, amount)
+        self.products_type[symbol] = transaction.product_type
 
         if self.portfolio[symbol].quantity == 0:
             del self.portfolio[symbol]
@@ -265,7 +325,13 @@ class CapitalGainsCalculator:
         if price is None:
             raise PriceMissingError(transaction)
         calculated_amount = quantity * price - transaction.fees
-        if not _approx_equal(amount, calculated_amount):
+        if not _approx_equal_price_rounding(
+            amount,
+            quantity,
+            price,
+            transaction.fees,
+            CalcuationType.DISPOSAL,
+        ):
             raise CalculatedAmountDiscrepancyError(transaction, calculated_amount)
         add_to_list(
             self.disposal_list,
@@ -305,6 +371,31 @@ class CapitalGainsCalculator:
                 self.add_disposal(transaction)
                 if self.date_in_tax_year(transaction.date):
                     total_sells += self.converter.to_gbp_for(amount, transaction)
+            elif (
+                transaction.action is ActionType.FULL_REDEMPTION_ADJ
+                and transaction.product_type is ProductType.US_T_BILL
+            ):
+                amount = get_amount_or_fail(transaction)
+                new_balance += amount
+                # find quantity
+                found_t = [
+                    x
+                    for x in transactions
+                    if x.symbol == transaction.symbol
+                    and x.product_type is ProductType.US_T_BILL
+                    and x.action is ActionType.FULL_REDEMPTION
+                ]
+                if len(found_t) > 0:
+                    transaction.price = Decimal(100)
+                    transaction.quantity = found_t[0].quantity
+                self.add_disposal(transaction)
+                if self.date_in_tax_year(transaction.date):
+                    total_sells += self.converter.to_gbp_for(amount, transaction)
+            elif (
+                transaction.action is ActionType.FULL_REDEMPTION
+                and transaction.product_type is ProductType.US_T_BILL
+            ):
+                continue
             elif transaction.action is ActionType.FEE:
                 amount = get_amount_or_fail(transaction)
                 new_balance += amount
@@ -785,6 +876,7 @@ class CapitalGainsCalculator:
             Decimal(allowance) if allowance is not None else None,
             calculation_log,
             show_unrealized_gains=self.calc_unrealized_gains,
+            products_type=self.products_type,
         )
 
     def make_portfolio_entry(

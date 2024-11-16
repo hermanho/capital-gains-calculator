@@ -15,7 +15,7 @@ from typing import Final
 
 from cgt_calc.const import TICKER_RENAMES
 from cgt_calc.exceptions import ParsingError, UnexpectedColumnCountError
-from cgt_calc.model import ActionType, BrokerTransaction
+from cgt_calc.model import ActionType, BrokerTransaction, ProductType
 
 COLUMNS_RELEASE: Final[list[str]] = [
     "Vest Date",
@@ -105,6 +105,7 @@ def _init_from_release_report(row_raw: list[str], filename: str) -> BrokerTransa
         amount=amount,
         currency="USD",
         broker="Morgan Stanley",
+        product_type=ProductType.EQUITY,
     )
 
 
@@ -178,6 +179,7 @@ def _init_from_withdrawal_report(
         amount=amount,
         currency="USD",
         broker="Morgan Stanley",
+        product_type=ProductType.EQUITY,
     )
 
     return _handle_stock_split(transaction)
